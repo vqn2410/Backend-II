@@ -1,5 +1,11 @@
 # Plataforma de Eventos e Inscripciones - Backend II
 
+> **Estudiante:** Vergara Nicolas  
+> **Curso:** Programación Backend II: Diseño y Arquitectura Backend  
+> **Comisión:** Comisión #94925  
+
+---
+
 ## 📌 Temática del Proyecto
 Sistema backend para una **Plataforma de Eventos e Inscripciones**. Permite a organizadores publicar conferencias, talleres y festivales, y a los usuarios registrarse, reservar entradas y gestionar su asistencia.
 
