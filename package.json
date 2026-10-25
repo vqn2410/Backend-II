@@ -1,0 +1,24 @@
+{
+  "name": "proyecto-eventos",
+  "version": "1.0.0",
+  "description": "Base arquitectónica por capas para Plataforma de Eventos e Inscripciones - Backend II",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "express",
+    "layered-architecture",
+    "backend",
+    "events"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mongoose": "^8.9.5"
+  }
+}
