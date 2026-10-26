@@ -22,16 +22,28 @@ const userSchema = new Schema(
     password: {
       type: String,
       required: true,
+      // select: false evita que la contraseña se devuelva por defecto en las consultas.
+      // Para leerla explícitamente (p. ej. en el futuro login) se usa .select('+password').
+      select: false,
     },
     role: {
       type: String,
-      enum: ['user', 'admin', 'organizer'],
+      enum: ['user', 'organizer', 'admin'],
       default: 'user',
     },
   },
   {
     timestamps: true,
     versionKey: false,
+    toJSON: {
+      transform(_doc, ret) {
+        // Expone 'id' (string) en lugar de '_id' y elimina la contraseña.
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.password;
+        return ret;
+      },
+    },
   }
 );
 

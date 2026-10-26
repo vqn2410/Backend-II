@@ -3,11 +3,10 @@ import sessionsService from '../services/sessions.service.js';
 export class SessionsController {
   async register(req, res, next) {
     try {
-      const result = await sessionsService.register(req.body);
-      return res.status(200).json({
+      const user = await sessionsService.register(req.body);
+      return res.status(201).json({
         status: 'success',
-        message: 'Endpoint de registro preparado (sin autenticación aún)',
-        data: result,
+        payload: user,
       });
     } catch (error) {
       next(error);
