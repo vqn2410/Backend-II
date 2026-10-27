@@ -1,7 +1,12 @@
+import eventsRepository from '../repositories/events.repository.js';
+
 export class EventsService {
+  /**
+   * Obtiene todos los eventos consultando al repositorio.
+   * @returns {Promise<Array>} Lista de eventos.
+   */
   async getAllEvents() {
-    // En etapas posteriores se conectará con el repositorio / DAO
-    return [];
+    return eventsRepository.getAll();
   }
 }
 
