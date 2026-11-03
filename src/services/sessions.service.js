@@ -1,5 +1,7 @@
 import usersRepository from '../repositories/users.repository.js';
-import { hashPassword } from '../utils/hash.js';
+import { hashPassword, comparePassword } from '../utils/hash.js';
+import { signToken } from '../utils/jwt.js';
+import { httpError, toPublicUser } from '../utils/index.js';
 
 // Expresión regular sencilla para validar el formato de un email.
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -25,17 +27,17 @@ export class SessionsService {
 
     // 2. Validar presencia de campos obligatorios (rechaza vacíos y solo-espacios)
     if (!firstName || !lastName || !normalizedEmail || !plainPassword) {
-      throw this.httpError(400, 'Faltan campos obligatorios');
+      throw httpError(400, 'Faltan campos obligatorios');
     }
 
     // 3. Validar formato de email
     if (!EMAIL_REGEX.test(normalizedEmail)) {
-      throw this.httpError(400, 'El email tiene un formato inválido');
+      throw httpError(400, 'El email tiene un formato inválido');
     }
 
     // 4. Validar longitud mínima de contraseña
     if (plainPassword.length < PASSWORD_MIN_LENGTH) {
-      throw this.httpError(
+      throw httpError(
         400,
         `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`
       );
@@ -44,7 +46,7 @@ export class SessionsService {
     // 5. Rechazar el registro si el email ya existe
     const existingUser = await usersRepository.findByEmail(normalizedEmail);
     if (existingUser) {
-      throw this.httpError(409, 'El email ya está registrado');
+      throw httpError(409, 'El email ya está registrado');
     }
 
     // 6. Hashear la contraseña con bcrypt (helper reutilizable en utils/)
@@ -59,38 +61,49 @@ export class SessionsService {
     });
 
     // 8. Devolver el usuario sin exponer la contraseña (ni en texto plano ni hasheada)
-    return this.toPublicUser(user);
+    return toPublicUser(user);
   }
 
   /**
-   * Convierte un documento de usuario en un objeto público sin contraseña.
-   * @param {object} user - Documento de Mongoose.
-   * @returns {object} Payload público con id (string), first_name, last_name, email y role.
+   * Autentica a un usuario y emite un token JWT.
+   * Flujo: normalizar -> buscar con contraseña -> comparar hash -> firmar token.
+   * @param {object} credentials - Datos recibidos del body ({ email, password }).
+   * @returns {Promise<object>} `{ user, token }` con el usuario público y el JWT.
    */
-  toPublicUser(user) {
-    const { _id, first_name, last_name, email, role } = user;
-    return {
-      id: _id.toString(),
-      first_name,
-      last_name,
-      email,
-      role,
-    };
-  }
-
-  /**
-   * Crea un error de negocio con un código de estado HTTP asociado.
-   * El middleware global de errores (errorHandler) lo transforma en la respuesta.
-   */
-  httpError(statusCode, message) {
-    const error = new Error(message);
-    error.statusCode = statusCode;
-    return error;
-  }
-
   async login(credentials) {
-    // Pendiente de implementar autenticación y generación de JWT
-    return { message: 'Servicio de login pendiente de implementación' };
+    const { email, password } = credentials ?? {};
+
+    // 1. Normalizar email y validar presencia
+    const normalizedEmail = String(email ?? '').trim().toLowerCase();
+    const plainPassword = String(password ?? '');
+
+    if (!normalizedEmail || !plainPassword) {
+      throw httpError(400, 'Email y contraseña son obligatorios');
+    }
+
+    // 2. Buscar el usuario incluyendo el hash de la contraseña (select: false por defecto)
+    const user = await usersRepository.findByEmailWithPassword(normalizedEmail);
+    if (!user) {
+      throw httpError(401, 'Credenciales inválidas');
+    }
+
+    // 3. Comparar la contraseña ingresada con el hash almacenado
+    const isMatch = await comparePassword(plainPassword, user.password);
+    if (!isMatch) {
+      throw httpError(401, 'Credenciales inválidas');
+    }
+
+    // 4. Firmar el JWT con los datos mínimos necesarios
+    const token = signToken({
+      id: String(user._id),
+      email: user.email,
+      role: user.role,
+    });
+
+    return {
+      user: toPublicUser(user),
+      token,
+    };
   }
 }
 

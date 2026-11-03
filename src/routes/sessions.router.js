@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import sessionsController from '../controllers/sessions.controller.js';
+import authMiddleware from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
-// Rutas base iniciales de sessions (sin lógica de auth por el momento)
+// Rutas de sessions
 router.post('/register', sessionsController.register);
 router.post('/login', sessionsController.login);
-router.get('/current', sessionsController.current);
+router.get('/current', authMiddleware, sessionsController.current);
 
 export default router;

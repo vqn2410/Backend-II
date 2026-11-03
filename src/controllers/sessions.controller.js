@@ -1,4 +1,6 @@
+import config from '../config/index.js';
 import sessionsService from '../services/sessions.service.js';
+import { getTokenMaxAge } from '../utils/jwt.js';
 
 export class SessionsController {
   async register(req, res, next) {
@@ -15,11 +17,19 @@ export class SessionsController {
 
   async login(req, res, next) {
     try {
-      const result = await sessionsService.login(req.body);
+      const { user, token } = await sessionsService.login(req.body);
+
+      // Cookie httpOnly: el token no queda accesible desde JavaScript del cliente.
+      res.cookie(config.cookieName, token, {
+        httpOnly: true,
+        secure: config.nodeEnv === 'production',
+        sameSite: 'strict',
+        maxAge: getTokenMaxAge(token),
+      });
+
       return res.status(200).json({
         status: 'success',
-        message: 'Endpoint de login preparado (sin autenticación aún)',
-        data: result,
+        payload: user,
       });
     } catch (error) {
       next(error);
@@ -30,7 +40,7 @@ export class SessionsController {
     try {
       return res.status(200).json({
         status: 'success',
-        message: 'Endpoint de sesión actual preparado',
+        payload: req.user,
       });
     } catch (error) {
       next(error);

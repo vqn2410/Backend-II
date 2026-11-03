@@ -12,6 +12,24 @@ export class UsersRepository {
   }
 
   /**
+   * Busca un usuario por su id (sin exponer la contraseña).
+   * @param {string} id - Identificador del usuario.
+   * @returns {Promise<object|null>} Documento del usuario o null.
+   */
+  async findById(id) {
+    return usersDAO.findById(id);
+  }
+
+  /**
+   * Busca un usuario por email incluyendo la contraseña (solo para login).
+   * @param {string} email - Email normalizado.
+   * @returns {Promise<object|null>} Documento con password o null.
+   */
+  async findByEmailWithPassword(email) {
+    return usersDAO.findByEmailWithPassword(email);
+  }
+
+  /**
    * Persiste un nuevo usuario.
    * @param {object} userData - Datos del usuario a guardar.
    * @returns {Promise<object>} Documento del usuario creado.
