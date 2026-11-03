@@ -15,13 +15,18 @@ export class SessionsService {
   async register(userData) {
     const { first_name, last_name, email, password } = userData ?? {};
 
-    // 1. Validar presencia de campos obligatorios
-    if (!first_name || !last_name || !email || !password) {
+    // 1. Normalizar entradas (trim + lowercase) ANTES de validar presencia,
+    //    para que un string compuesto solo por espacios sea rechazado con 400
+    //    y no llegue a fallar recién en la validación de Mongoose (que daría 500).
+    const firstName = String(first_name ?? '').trim();
+    const lastName = String(last_name ?? '').trim();
+    const normalizedEmail = String(email ?? '').trim().toLowerCase();
+    const plainPassword = String(password ?? '');
+
+    // 2. Validar presencia de campos obligatorios (rechaza vacíos y solo-espacios)
+    if (!firstName || !lastName || !normalizedEmail || !plainPassword) {
       throw this.httpError(400, 'Faltan campos obligatorios');
     }
-
-    // 2. Normalizar el email (trim + lowercase) antes de cualquier validación y guardado
-    const normalizedEmail = String(email).trim().toLowerCase();
 
     // 3. Validar formato de email
     if (!EMAIL_REGEX.test(normalizedEmail)) {
@@ -29,7 +34,7 @@ export class SessionsService {
     }
 
     // 4. Validar longitud mínima de contraseña
-    if (String(password).length < PASSWORD_MIN_LENGTH) {
+    if (plainPassword.length < PASSWORD_MIN_LENGTH) {
       throw this.httpError(
         400,
         `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`
@@ -43,12 +48,12 @@ export class SessionsService {
     }
 
     // 6. Hashear la contraseña con bcrypt (helper reutilizable en utils/)
-    const hashedPassword = await hashPassword(String(password));
+    const hashedPassword = await hashPassword(plainPassword);
 
     // 7. Persistir el usuario. El role NO se toma del body: siempre usa el valor por defecto ('user').
     const user = await usersRepository.create({
-      first_name: String(first_name).trim(),
-      last_name: String(last_name).trim(),
+      first_name: firstName,
+      last_name: lastName,
       email: normalizedEmail,
       password: hashedPassword,
     });
