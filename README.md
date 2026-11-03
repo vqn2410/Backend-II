@@ -21,6 +21,9 @@ Esta entrega corresponde a la **Pre-entrega 2: Registro seguro de usuarios**, qu
 - **bcrypt** (Hash seguro de contraseñas)
 - **Dotenv** (Gestión de variables de entorno)
 - **Módulos ECMAScript (ESM)** (`import` / `export`)
+- **Jest** (framework de tests)
+- **Supertest** (cliente HTTP para tests de endpoints)
+- **mongodb-memory-server** (MongoDB en memoria para tests, sin levantar una instancia a mano)
 
 ---
 
@@ -59,6 +62,9 @@ backend-ii-actividad/
 │   └── utils/                 # Funciones de soporte y utilitarios
 │       ├── index.js
 │       └── hash.js            # Helper reutilizable de bcrypt (hash y comparación)
+├── test/                      # Tests automatizados (Jest + Supertest)
+│   ├── sessions.register.test.js
+│   └── errorHandler.test.js
 ├── .env                       # Variables de entorno locales (ignorado por git)
 ├── .env.example               # Plantilla de variables de entorno de ejemplo
 ├── .gitignore                 # Archivos y directorios excluidos del repositorio
@@ -149,12 +155,14 @@ npm install
 
   * **Reglas de validación:**
     1. `first_name`, `last_name`, `email` y `password` son obligatorios.
-    2. El `email` debe tener un formato válido (`algo@dominio.tld`).
-    3. La `password` debe tener al menos **8 caracteres**.
-    4. El `email` se **normaliza** (trim + lowercase) antes de validar y guardar.
-    5. El registro se **rechaza si el email ya existe**.
-    6. La `password` se **hashea con bcrypt** (nunca se guarda en texto plano).
-    7. El `role` **no puede manipularse desde el body**: siempre se asigna el valor por defecto `user`.
+    2. Los campos de presencia se validan tras aplicar `trim`: un string vacío o compuesto **solo por espacios** se rechaza con `400` (no llega a fallar en Mongoose con `500`).
+    3. El `email` debe tener un formato válido (`algo@dominio.tld`).
+    4. La `password` debe tener al menos **8 caracteres**.
+    5. El `email` se **normaliza** (trim + lowercase) antes de validar y guardar.
+    6. El registro se **rechaza si el email ya existe** (409).
+    7. Una **colisión del índice único** (`E11000`), p. ej. por una carrera concurrente sobre el mismo email, se mapea a `409` en el `errorHandler` en lugar de `500`.
+    8. La `password` se **hashea con bcrypt** (nunca se guarda en texto plano).
+    9. El `role` **no puede manipularse desde el body**: siempre se asigna el valor por defecto `user`.
 
   * **Respuesta `201 Created` (éxito, email normalizado y SIN password):**
     ```json
@@ -228,7 +236,54 @@ El campo `password` debe mostrarse como un hash de bcrypt (empieza con `$2b$`), 
 
 ---
 
+## 🧪 Tests automatizados
+
+El proyecto incluye una suite de tests con **Jest + Supertest** que levanta una instancia de **MongoDB en memoria** (`mongodb-memory-server`), por lo que **no hace falta tener MongoDB corriendo a mano** para validar el flujo de registro.
+
+```bash
+npm test          # ejecuta la suite completa una vez
+npm run test:watch  # modo watch (recarga al cambiar archivos)
+```
+
+### Cobertura
+
+* **`POST /api/sessions/register`** (`test/sessions.register.test.js`):
+  * `201` — registro exitoso, sin exponer `password` ni `_id`.
+  * `201` — normalización del email (`trim` + `lowercase`).
+  * `201` — el campo `role` del body se ignora (siempre queda `user`).
+  * `409` — email ya registrado.
+  * `400` — campos faltantes.
+  * `400` — campos de solo espacios (`"   "`).
+  * `400` — email con formato inválido.
+  * `400` — contraseña demasiado corta.
+  * Verificación de que la contraseña queda **hasheada** en la base (`$2b$...`).
+
+* **`errorHandler`** (`test/errorHandler.test.js`):
+  * Mapeo del error `E11000` (clave duplicada) a `409` en vez de `500`.
+  * Preservación del `statusCode` de los errores de negocio (`400`, etc.).
+  * `500` como valor por defecto para errores inesperados.
+
+---
+
 ## 📋 Modelos Base Creados
 
 * **`User` (`src/models/User.js`):** `first_name`, `last_name`, `email` (único), `password` (con `select: false` para no exponerlo por defecto), `role` (`user`, `organizer`, `admin`; por defecto `user`), marcas de tiempo (`createdAt`, `updatedAt`). El serializado (`toJSON`) expone `id` y **omite** `password`.
 * **`Event` (`src/models/Event.js`):** `title`, `description`, `date`, `location`, `capacity`, `price`, `status`, marcas de tiempo (`createdAt`, `updatedAt`).
+
+---
+
+## 🗺️ Roadmap — Próximo módulo: autenticación
+
+La capa de sesiones ya deja preparada la base para el módulo de **login, JWT, cookies y la ruta `current`**:
+
+* **`src/utils/hash.js`** expone `comparePassword(plain, hashed)`, listo para validar credenciales en el login.
+* **`src/models/User.js`** marca `password` con `select: false`, por lo que el login deberá leerla explícitamente con `UserModel.findOne({ email }).select('+password')`.
+* **`src/controllers/sessions.controller.js`** ya tiene los handlers `login` y `current` cableados (retornan respuestas placeholder).
+* **`config.jwtSecret`** (`JWT_SECRET` en `.env`) está disponible para firmar y verificar tokens.
+
+Pasos previstos:
+
+1. **Login** — buscar el usuario por email normalizado, recuperar el hash con `.select('+password')`, validar con `comparePassword` y responder `401` ante credenciales inválidas.
+2. **JWT** — emitir un token firmado con `config.jwtSecret` (p. ej. con `jsonwebtoken`) e incluirlo en una cookie `httpOnly`.
+3. **Cookie** — setear la cookie en la respuesta (con `cookie-parser` / `res.cookie`) y leerla en las rutas protegidas.
+4. **`GET /api/sessions/current`** — middleware de autenticación que verifica el JWT y expone `req.user` (sin `password`), para devolver el perfil del usuario autenticado.
