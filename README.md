@@ -19,6 +19,8 @@ Esta entrega corresponde a la **Pre-entrega 2: Registro seguro de usuarios**, qu
 - **Express.js** (Framework HTTP)
 - **Mongoose** (Modelado de datos para MongoDB)
 - **bcrypt** (Hash seguro de contraseñas)
+- **jsonwebtoken** (Firma y verificación de JWT)
+- **cookie-parser** (Lectura y escritura de cookies)
 - **Dotenv** (Gestión de variables de entorno)
 - **Módulos ECMAScript (ESM)** (`import` / `export`)
 - **Jest** (framework de tests)
@@ -58,12 +60,16 @@ backend-ii-actividad/
 │   │   ├── User.js
 │   │   └── Event.js
 │   ├── middlewares/           # Middlewares transversales y manejo global de errores
-│   │   └── errorHandler.js
+│   │   ├── errorHandler.js
+│   │   └── auth.middleware.js # Autenticación por JWT (cookie httpOnly / Bearer)
 │   └── utils/                 # Funciones de soporte y utilitarios
 │       ├── index.js
-│       └── hash.js            # Helper reutilizable de bcrypt (hash y comparación)
+│       ├── hash.js            # Helper reutilizable de bcrypt (hash y comparación)
+│       └── jwt.js             # Firma y verificación de tokens JWT
 ├── test/                      # Tests automatizados (Jest + Supertest)
+│   ├── helpers/mongo.js       # MongoDB en memoria compartido entre suites
 │   ├── sessions.register.test.js
+│   ├── sessions.auth.test.js  # login + current
 │   └── errorHandler.test.js
 ├── .env                       # Variables de entorno locales (ignorado por git)
 ├── .env.example               # Plantilla de variables de entorno de ejemplo
@@ -90,6 +96,8 @@ Configura los valores según tu entorno:
 | `NODE_ENV` | Entorno de ejecución (`development`, `production`) | `development` |
 | `MONGO_URL` | URI de conexión a la base de datos MongoDB | `mongodb://localhost:27017/eventos_db` |
 | `JWT_SECRET` | Clave secreta para firma y verificación de tokens | `tu_secreto_jwt_aqui` |
+| `JWT_EXPIRES_IN` | Tiempo de vida del token JWT | `24h` |
+| `COOKIE_NAME` | Nombre de la cookie donde se guarda el JWT | `token` |
 
 ---
 
@@ -188,11 +196,50 @@ npm install
     { "status": "error", "message": "El email ya está registrado" }
     ```
 
-### 4. Sesiones (Estructura base para próximos módulos)
+### 4. Login de Usuarios (Autenticación con JWT)
+
 * **POST `/api/sessions/login`**
-  * Estructura base para el futuro inicio de sesión y emisión de JWT.
+  * Autentica un usuario con `email` y `password`, valida el hash con `bcrypt` y emite un **JWT** que se envía en una **cookie `httpOnly`** (no accesible desde JavaScript del cliente).
+  * **Campos esperados en el body (JSON):**
+
+    | Campo | Tipo | Requerido | Descripción |
+    | :--- | :--- | :--- | :--- |
+    | `email` | string | ✅ | Email del usuario (se normaliza: `trim` + `lowercase`) |
+    | `password` | string | ✅ | Contraseña en texto plano (se compara contra el hash) |
+
+  * **Respuesta `200 OK` (éxito):** setea la cookie `token` y devuelve el perfil (sin `password`):
+    ```json
+    {
+      "status": "success",
+      "payload": {
+        "id": "665f2a1b2c3d4e5f6a7b8c9d",
+        "first_name": "Ana",
+        "last_name": "Pérez",
+        "email": "ana@mail.com",
+        "role": "user"
+      }
+    }
+    ```
+
+  * **Respuesta `400 Bad Request` (faltan email o contraseña):**
+    ```json
+    { "status": "error", "message": "Email y contraseña son obligatorios" }
+    ```
+
+  * **Respuesta `401 Unauthorized` (credenciales inválidas):**
+    ```json
+    { "status": "error", "message": "Credenciales inválidas" }
+    ```
+
+### 5. Sesión actual (protegida)
+
 * **GET `/api/sessions/current`**
-  * Estructura base para recuperar el perfil del usuario autenticado.
+  * Requiere autenticación (cookie `token` válida o header `Authorization: Bearer <token>`).
+  * **Respuesta `200 OK`:** devuelve el perfil del usuario autenticado (sin `password`).
+  * **Respuesta `401 Unauthorized` (sin token / token inválido o expirado):**
+    ```json
+    { "status": "error", "message": "No autenticado" }
+    ```
 
 ---
 
@@ -236,9 +283,48 @@ El campo `password` debe mostrarse como un hash de bcrypt (empieza con `$2b$`), 
 
 ---
 
+## 🔐 Cómo probar login y sesión actual (con `curl`)
+
+> Requisito: tener un usuario registrado (ver sección anterior) y el servidor levantado.
+
+**1. Login exitoso** (guarda la cookie en un archivo para usarla luego)
+```bash
+curl -X POST http://localhost:8080/api/sessions/login \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{ "email": "ana@mail.com", "password": "Secreta123" }'
+```
+
+**2. Login con credenciales inválidas** (espera `401`)
+```bash
+curl -X POST http://localhost:8080/api/sessions/login \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "ana@mail.com", "password": "incorrecta" }'
+```
+
+**3. Sesión actual con cookie** (espera `200` con el perfil)
+```bash
+curl -X GET http://localhost:8080/api/sessions/current \
+  -b cookies.txt
+```
+
+**4. Sesión actual sin cookie** (espera `401`)
+```bash
+curl -X GET http://localhost:8080/api/sessions/current
+```
+
+**5. Sesión actual con header Bearer** (alternativa a la cookie)
+```bash
+TOKEN=$(node -e "const { sign } = require('jsonwebtoken'); console.log(sign({ id: 'x', email: 'ana@mail.com', role: 'user' }, process.env.JWT_SECRET || 'default_secret', { expiresIn: '24h' }))")
+curl -X GET http://localhost:8080/api/sessions/current \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
 ## 🧪 Tests automatizados
 
-El proyecto incluye una suite de tests con **Jest + Supertest** que levanta una instancia de **MongoDB en memoria** (`mongodb-memory-server`), por lo que **no hace falta tener MongoDB corriendo a mano** para validar el flujo de registro.
+El proyecto incluye una suite de tests con **Jest + Supertest** que levanta una instancia de **MongoDB en memoria** (`mongodb-memory-server`), por lo que **no hace falta tener MongoDB corriendo a mano** para validar los flujos.
 
 ```bash
 npm test          # ejecuta la suite completa una vez
@@ -258,6 +344,14 @@ npm run test:watch  # modo watch (recarga al cambiar archivos)
   * `400` — contraseña demasiado corta.
   * Verificación de que la contraseña queda **hasheada** en la base (`$2b$...`).
 
+* **`POST /api/sessions/login` y `GET /api/sessions/current`** (`test/sessions.auth.test.js`):
+  * `200` — login exitoso (setea cookie `httpOnly` con el JWT).
+  * `200` — normalización del email en el login.
+  * `401` — contraseña incorrecta / email no registrado.
+  * `400` — faltan email o contraseña.
+  * `200` — `/current` con cookie válida (devuelve el perfil sin `password`).
+  * `401` — `/current` sin cookie o con token inválido.
+
 * **`errorHandler`** (`test/errorHandler.test.js`):
   * Mapeo del error `E11000` (clave duplicada) a `409` en vez de `500`.
   * Preservación del `statusCode` de los errores de negocio (`400`, etc.).
@@ -272,18 +366,18 @@ npm run test:watch  # modo watch (recarga al cambiar archivos)
 
 ---
 
-## 🗺️ Roadmap — Próximo módulo: autenticación
+## ✅ Módulo de autenticación (implementado)
 
-La capa de sesiones ya deja preparada la base para el módulo de **login, JWT, cookies y la ruta `current`**:
+El módulo de **login, JWT, cookies y la ruta `current`** ya está implementado sobre la arquitectura en capas:
 
-* **`src/utils/hash.js`** expone `comparePassword(plain, hashed)`, listo para validar credenciales en el login.
-* **`src/models/User.js`** marca `password` con `select: false`, por lo que el login deberá leerla explícitamente con `UserModel.findOne({ email }).select('+password')`.
-* **`src/controllers/sessions.controller.js`** ya tiene los handlers `login` y `current` cableados (retornan respuestas placeholder).
-* **`config.jwtSecret`** (`JWT_SECRET` en `.env`) está disponible para firmar y verificar tokens.
+* **Login** — `SessionsService.login` busca al usuario por email normalizado, recupera el hash con `.select('+password')` y lo valida con `comparePassword` (`src/utils/hash.js`); responde `401` ante credenciales inválidas.
+* **JWT** — `src/utils/jwt.js` firma y verifica tokens con `JWT_SECRET` (y `JWT_EXPIRES_IN`).
+* **Cookie** — el controlador setea una cookie `httpOnly` (segura en producción) con el token; `cookie-parser` la lee en las rutas protegidas.
+* **`GET /api/sessions/current`** — `auth.middleware.js` valida el token (cookie o header `Authorization: Bearer`) y expone `req.user` sin `password`.
 
-Pasos previstos:
+### Siguientes pasos sugeridos
 
-1. **Login** — buscar el usuario por email normalizado, recuperar el hash con `.select('+password')`, validar con `comparePassword` y responder `401` ante credenciales inválidas.
-2. **JWT** — emitir un token firmado con `config.jwtSecret` (p. ej. con `jsonwebtoken`) e incluirlo en una cookie `httpOnly`.
-3. **Cookie** — setear la cookie en la respuesta (con `cookie-parser` / `res.cookie`) y leerla en las rutas protegidas.
-4. **`GET /api/sessions/current`** — middleware de autenticación que verifica el JWT y expone `req.user` (sin `password`), para devolver el perfil del usuario autenticado.
+* Emitir JWT con expiración más corta para `access token` + `refresh token`.
+* Añadir middleware de autorización por `role` (`user`, `organizer`, `admin`).
+* Endpoint de cierre de sesión (`logout`) que limpie la cookie.
+* Rate limiting y protección contra fuerza bruta en el login.
