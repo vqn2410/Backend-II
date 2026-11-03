@@ -7,10 +7,10 @@ import {
   expect,
 } from '@jest/globals';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
 
 import app from '../src/app.js';
+import { startMongo, stopMongo, clearCollections } from './helpers/mongo.js';
 
 // Endpoint bajo prueba
 const REGISTER_URL = '/api/sessions/register';
@@ -23,27 +23,9 @@ const validUser = {
   password: 'Secreta123',
 };
 
-let mongo;
-
-beforeAll(async () => {
-  // Base de datos MongoDB en memoria: permite validar el flujo real
-  // (incluido el índice único y el error E11000) sin levantar MongoDB a mano.
-  mongo = await MongoMemoryServer.create();
-  await mongoose.connect(mongo.getUri());
-});
-
-afterAll(async () => {
-  await mongoose.disconnect();
-  await mongo.stop();
-});
-
-afterEach(async () => {
-  // Limpia las colecciones entre tests para que los emails únicos no interfieran.
-  const { collections } = mongoose.connection;
-  await Promise.all(
-    Object.values(collections).map((collection) => collection.deleteMany({}))
-  );
-});
+beforeAll(startMongo);
+afterAll(stopMongo);
+afterEach(clearCollections);
 
 describe('POST /api/sessions/register', () => {
   it('registra un usuario válido y responde 201 sin exponer la contraseña', async () => {
@@ -142,7 +124,7 @@ describe('POST /api/sessions/register', () => {
   it('persiste la contraseña hasheada con bcrypt (nunca en texto plano)', async () => {
     await request(app).post(REGISTER_URL).send(validUser);
 
-    // .select('+password') es necesario por el `select: false` del modelo.
+    // Se consulta directo a la colección para evitar el `select: false` del modelo.
     const stored = await mongoose.connection
       .collection('users')
       .findOne({ email: 'ana@mail.com' });
