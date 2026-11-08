@@ -17,16 +17,4 @@ export const signToken = (payload) =>
  */
 export const verifyToken = (token) => jwt.verify(token, config.jwtSecret);
 
-/**
- * Devuelve la cantidad de milisegundos restantes de vida de un token (para el
- * `maxAge` de la cookie), a partir de su claim `exp`.
- * @param {string} token - Token JWT firmado.
- * @returns {number|undefined} Milisegundos restantes, o undefined si no se puede calcular.
- */
-export const getTokenMaxAge = (token) => {
-  const { exp } = jwt.decode(token) ?? {};
-  if (!exp) return undefined;
-  return exp * 1000 - Date.now();
-};
-
-export default { signToken, verifyToken, getTokenMaxAge };
+export default { signToken, verifyToken };

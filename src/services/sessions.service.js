@@ -67,8 +67,10 @@ export class SessionsService {
   /**
    * Autentica a un usuario y emite un token JWT.
    * Flujo: normalizar -> buscar con contraseña -> comparar hash -> firmar token.
+   * Responde siempre con "Credenciales inválidas" ante email/contraseña que no
+   * coincidan, sin especificar cuál de los dos falló.
    * @param {object} credentials - Datos recibidos del body ({ email, password }).
-   * @returns {Promise<object>} `{ user, token }` con el usuario público y el JWT.
+   * @returns {Promise<string>} Token JWT firmado.
    */
   async login(credentials) {
     const { email, password } = credentials ?? {};
@@ -93,17 +95,12 @@ export class SessionsService {
       throw httpError(401, 'Credenciales inválidas');
     }
 
-    // 4. Firmar el JWT con los datos mínimos necesarios
-    const token = signToken({
+    // 4. Firmar el JWT con los datos mínimos necesarios (id, email, role)
+    return signToken({
       id: String(user._id),
       email: user.email,
       role: user.role,
     });
-
-    return {
-      user: toPublicUser(user),
-      token,
-    };
   }
 }
 
