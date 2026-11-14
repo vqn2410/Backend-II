@@ -213,7 +213,7 @@ npm install
 
     | Campo | Tipo | Requerido | Descripción |
     | :--- | :--- | :--- | :--- |
-    | `email` | string | ✅ | Email del usuario (se normaliza: `trim` + `lowercase`) |
+    | `email` | string | ✅ | Email del usuario (se normaliza y valida su formato) |
     | `password` | string | ✅ | Contraseña en texto plano (se compara contra el hash) |
 
   * **Respuesta `200 OK` (éxito):** setea la cookie httpOnly `currentUser` con el JWT:
@@ -227,6 +227,11 @@ npm install
   * **Respuesta `400 Bad Request` (faltan email o contraseña):**
     ```json
     { "status": "error", "message": "Email y contraseña son obligatorios" }
+    ```
+
+  * **Respuesta `400 Bad Request` (email con formato inválido):**
+    ```json
+    { "status": "error", "message": "El email tiene un formato inválido" }
     ```
 
   * **Respuesta `401 Unauthorized` (credenciales inválidas):**
@@ -369,7 +374,7 @@ npm run test:watch  # modo watch (recarga al cambiar archivos)
   * `200` — login exitoso: responde `{ message: "Login correcto" }` y setea la cookie httpOnly `currentUser` (con `HttpOnly`, `SameSite=Lax` y `Max-Age=3600`).
   * `200` — normalización del email en el login.
   * `401` — contraseña incorrecta / email no registrado (mensaje genérico).
-  * `400` — faltan email o contraseña.
+  * `400` — faltan email o contraseña / email con formato inválido.
   * `200` — `/current` con cookie válida (devuelve `{ id, email, role }` sin `password`).
   * `401` — `/current` sin cookie, con token inválido o con token expirado.
   * `200` — logout borra la cookie y deja `/current` en `401`.
@@ -394,7 +399,7 @@ El módulo de **login, JWT, cookies, ruta protegida `current` y logout** ya est�
 
 * **Login** — `SessionsService.login` busca al usuario por email normalizado, recupera el hash con `.select('+password')` y lo valida con `comparePassword` (`src/utils/hash.js`); responde `401` con "Credenciales inválidas" ante email/contraseña que no coincidan, sin especificar cuál falló.
 * **JWT** — `src/utils/jwt.js` firma y verifica tokens con `JWT_SECRET` (expiración configurable con `JWT_EXPIRES_IN`).
-* **Cookie** — el controlador setea la cookie httpOnly `currentUser` (`httpOnly: true`, `sameSite: 'lax'`, `maxAge: 3600000` y `secure: true` solo en producción); `cookie-parser` la lee en las rutas protegidas.
+* **Cookie** — el controlador setea la cookie httpOnly `currentUser` (`httpOnly: true`, `sameSite: 'lax'`, `maxAge: 3600000` y `secure: true` solo en producción); `cookie-parser` la lee en las rutas protegidas. En producción la cookie `secure` exige servir la API sobre **HTTPS**.
 * **`GET /api/sessions/current`** — `auth.middleware.js` lee la cookie, verifica el JWT y expone `req.user = { id, email, role }` (sin `password`).
 * **Logout** — `POST /api/sessions/logout` elimina la cookie `currentUser` y responde confirmación.
 
