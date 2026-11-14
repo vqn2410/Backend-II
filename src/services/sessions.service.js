@@ -83,19 +83,24 @@ export class SessionsService {
       throw httpError(400, 'Email y contraseña son obligatorios');
     }
 
-    // 2. Buscar el usuario incluyendo el hash de la contraseña (select: false por defecto)
+    // 2. Validar formato de email (misma política que en el registro)
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      throw httpError(400, 'El email tiene un formato inválido');
+    }
+
+    // 3. Buscar el usuario incluyendo el hash de la contraseña (select: false por defecto)
     const user = await usersRepository.findByEmailWithPassword(normalizedEmail);
     if (!user) {
       throw httpError(401, 'Credenciales inválidas');
     }
 
-    // 3. Comparar la contraseña ingresada con el hash almacenado
+    // 4. Comparar la contraseña ingresada con el hash almacenado
     const isMatch = await comparePassword(plainPassword, user.password);
     if (!isMatch) {
       throw httpError(401, 'Credenciales inválidas');
     }
 
-    // 4. Firmar el JWT con los datos mínimos necesarios (id, email, role)
+    // 5. Firmar el JWT con los datos mínimos necesarios (id, email, role)
     return signToken({
       id: String(user._id),
       email: user.email,

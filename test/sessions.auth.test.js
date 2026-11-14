@@ -111,6 +111,18 @@ describe('POST /api/sessions/login', () => {
       message: 'Email y contraseña son obligatorios',
     });
   });
+
+  it('devuelve 400 con un email de formato inválido', async () => {
+    const res = await request(app)
+      .post(LOGIN_URL)
+      .send({ email: 'correo-invalido', password: 'Secreta123' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      status: 'error',
+      message: 'El email tiene un formato inválido',
+    });
+  });
 });
 
 describe('GET /api/sessions/current', () => {
